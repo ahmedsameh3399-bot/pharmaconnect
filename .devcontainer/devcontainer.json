@@ -1,0 +1,41 @@
+{
+  "name": "Pharma Connect",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    // Docker-in-Docker gives us a real docker daemon inside the Codespace so
+    // `docker compose up` works exactly like it does locally.
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "forwardPorts": [5173, 8000, 5432],
+  "portsAttributes": {
+    "5173": {
+      "label": "Pharma Connect (frontend)",
+      "visibility": "public",
+      "onAutoForward": "openBrowserOnce"
+    },
+    "8000": {
+      "label": "Pharma Connect API",
+      "visibility": "public",
+      "onAutoForward": "silent"
+    },
+    "5432": {
+      "label": "Postgres",
+      "visibility": "private",
+      "onAutoForward": "silent"
+    }
+  },
+  // postCreate: one-time setup (write .env from the Codespace URLs, build images).
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  // postStart: every time the Codespace resumes, make sure the stack is up.
+  "postStartCommand": "bash .devcontainer/start.sh",
+  "remoteUser": "vscode",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss"
+      ]
+    }
+  }
+}

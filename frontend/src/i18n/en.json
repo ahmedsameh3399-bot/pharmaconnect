@@ -1,0 +1,50 @@
+{
+  "app": {
+    "name": "Pharma Connect",
+    "tagline": "Compare distributors. Order smarter."
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "search": "Search & Compare",
+    "myOrders": "My Orders",
+    "chatbot": "Assistant",
+    "catalog": "My Catalog",
+    "incomingOrders": "Incoming Orders",
+    "stockAlerts": "Stock Alerts",
+    "users": "Users",
+    "metrics": "Metrics",
+    "logout": "Log out",
+    "profile": "Profile"
+  },
+  "auth": {
+    "login": "Log in",
+    "register": "Create account",
+    "email": "Email",
+    "password": "Password",
+    "fullName": "Full name",
+    "role": "Account type",
+    "rolePharmacy": "Pharmacy",
+    "roleDistributor": "Distributor company",
+    "pharmacyName": "Pharmacy name",
+    "distributorName": "Company name",
+    "licenseNumber": "License number",
+    "address": "Address",
+    "phone": "Phone",
+    "submit": "Submit",
+    "noAccount": "No account yet?",
+    "haveAccount": "Already have an account?",
+    "loggedOut": "Logged out"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "search": "Search",
+    "quantity": "Quantity",
+    "submit": "Submit",
+    "back": "Back",
+    "empty": "Nothing here yet"
+  }
+}
