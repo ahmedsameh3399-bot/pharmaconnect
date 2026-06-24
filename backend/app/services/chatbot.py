@@ -1,23 +1,22 @@
-"""Grounded RAG chatbot orchestrator (Upgrade #7).
+"""Grounded RAG chatbot orchestrator (Upgraded to Groq المجاني).
 
 Flow on every user question:
   1. Persist the user's message.
   2. Retrieve top-K relevant medications from our DB (services.retrieval).
-  3. Build a strict system prompt instructing Claude to ONLY use the provided
+  3. Build a strict system prompt instructing Groq to ONLY use the provided
      context, and to refuse if the context can't answer the question.
-  4. Send the prompt + a short rolling history of the chat to Claude.
+  4. Send the prompt + a short rolling history of the chat to Groq.
   5. Persist the assistant's reply with a citations field listing the
      medication IDs we retrieved.
-
-If the Anthropic API key isn't configured the endpoint disables itself with a
-clear error rather than silently failing.
 """
 
 import json
 import logging
+import os
 from datetime import date
 
-from anthropic import Anthropic
+# استبدلنا مكتبة كلود بمكتبة Groq
+from groq import Groq
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -28,32 +27,24 @@ from app.services.retrieval import retrieve, format_context
 
 log = logging.getLogger(__name__)
 
-# Hard limit on conversational history we send back to Claude per turn so
-# costs stay bounded and the model isn't distracted by ancient context.
 HISTORY_TURN_LIMIT = 6
 
-SYSTEM_PROMPT = """You are Pharma Connect's medication-information assistant.
+SYSTEM_PROMPT = """You are Pharma Connect's expert medical and medication-information assistant.
 
-You answer questions for pharmacy staff using ONLY the medication records
-provided to you in the CONTEXT block. You must follow these rules:
+You must communicate fluently and naturally in Arabic (preferring Egyptian/Standard Arabic as used by the user) or English. You act as an expert pharmacist who knows everything about medications, active ingredients, and alternative treatments.
 
-1. Do NOT use any medical knowledge that is not present in the CONTEXT.
-2. If the CONTEXT does not contain enough information, say:
-   "I don't have enough information in our catalog to answer that."
-3. Never give dosing recommendations, diagnostic advice, or prescription
-   guidance. If asked, say:
-   "I can describe what's in our catalog, but for medical advice please
-    consult a licensed pharmacist or physician."
-4. When the user asks about alternatives, list medications from the CONTEXT
-   that share the same active_ingredient (or same ATC code if the active
-   ingredient match returns nothing).
-5. Cite the medication name you used inline, e.g. "Panadol Extra (paracetamol 500 mg)".
-6. Keep answers concise (under 150 words) and factual.
+You must follow these strict rules:
+1. **Language**: Always respond in the same language the user is using. Respond in a friendly, clear, and professional Arabic.
+2. **Symptom Complaints (ترشيح العلاج حسب الشكوى)**: If a user complains about a symptom, pain, or illness (e.g., "عندي صداع", "مغص", "كحة"), analyze the complaint and recommend the best, safest standard medications or OTC treatments. Explain briefly how each recommended medicine helps.
+3. **Active Ingredients & Alternatives (المواد الفعالة والبدائل)**: When asked about any medication, always be ready to explain its active ingredient (المادة الفعالة). If the user asks for an alternative (بديل), provide generic alternatives (same active ingredient) or therapeutic alternatives (different ingredient but has the same effect).
+4. **Knowledge Base**: First, check the provided CONTEXT block. If the medication or information is there, use it. If it is NOT in the context, do NOT say "I don't have enough information". Instead, use your own extensive, built-in medical and pharmacological knowledge to give a complete, perfect answer.
+5. **Medical Disclaimer**: At the end of medical recommendations or diagnoses, always add a friendly disclaimer reminding the user to consult a physician or a licensed pharmacist to confirm exact dosages (e.g., "يرجى استشارة الطبيب أو الصيدلي للتأكد من الجرعة المناسبة لحالتك").
+6. Keep your responses highly organized using bullet points and bold text for medicine names.
 """
 
 
 class ChatbotDisabled(Exception):
-    """Raised when ANTHROPIC_API_KEY isn't configured."""
+    """Raised when API Key isn't configured."""
 
 
 class ChatbotRateLimited(Exception):
@@ -90,27 +81,27 @@ def _get_or_create_session(db: Session, user: User, session_id: int | None) -> C
 
 
 def _build_history(session: ChatSession) -> list[dict]:
-    """Return the last few turns formatted as Claude API messages."""
-    # Walk the messages in chronological order, then take the trailing slice
-    # so we keep the most recent context. Drop the assistant's most recent
-    # message because we're about to generate a new one in its place.
+    """Return the last few turns formatted as Groq API messages."""
     msgs = [m for m in session.messages if m.role in ("user", "assistant")]
     if msgs and msgs[-1].role == "user":
-        msgs = msgs[:-1]  # we'll append the current user turn separately
+        msgs = msgs[:-1]  
     trimmed = msgs[-(HISTORY_TURN_LIMIT * 2):]
     return [{"role": m.role, "content": m.content} for m in trimmed]
 
 
 def ask(db: Session, user: User, session_id: int | None, message: str) -> ChatMessage:
     """Run one chatbot turn end-to-end. Caller commits the session."""
-    if not settings.chatbot_enabled:
-        raise ChatbotDisabled("Chatbot is not configured (ANTHROPIC_API_KEY missing).")
+    
+    # محاولة قراءة المفتاح من البيئة أو استخدام المفتاح القديم تيسيراً عليك
+    groq_key = os.environ.get("GROQ_API_KEY") or getattr(settings, "anthropic_api_key", None)
+    
+    if not groq_key:
+        raise ChatbotDisabled("Chatbot is not configured (GROQ_API_KEY missing).")
 
     _check_quota(db, user)
 
     session = _get_or_create_session(db, user, session_id)
 
-    # Persist the user message FIRST so it's stored even if Claude fails.
     user_msg = ChatMessage(session_id=session.id, role="user", content=message)
     db.add(user_msg)
     db.flush()
@@ -127,26 +118,26 @@ def ask(db: Session, user: User, session_id: int | None, message: str) -> ChatMe
         }
     )
 
-    client = Anthropic(api_key=settings.anthropic_api_key)
+    # تشغيل عميل Groq الجديد
+    client = Groq(api_key=groq_key)
     try:
-        response = client.messages.create(
-            model=settings.claude_model,
+        # دمج الـ System Prompt في قائمة الرسائل لأن Groq يفضل هذا الهيكل
+        full_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
+        
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",  # الموديل الحديث والمجاني
             max_tokens=400,
-            system=SYSTEM_PROMPT,
-            messages=history,
+            messages=full_messages,
         )
-        reply_text = "".join(
-            block.text for block in response.content if getattr(block, "type", "") == "text"
-        ).strip()
+        reply_text = response.choices[0].message.content.strip()
+        
     except Exception as exc:
-        log.exception("Claude API call failed")
+        log.exception("Groq API call failed")
         reply_text = (
             "Sorry, the assistant is temporarily unavailable. "
             f"({type(exc).__name__})"
         )
 
-    # Auto-title the session on the first turn so the user's chat list isn't
-    # all "New chat".
     if session.title == "New chat":
         session.title = message[:80]
 
